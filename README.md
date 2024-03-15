@@ -1,7 +1,7 @@
 # Chinese Dark Chess in Rust
 
 ## Overview
-Chinese Dark Chess is a strategy board game developed in Rust. It is a variant of traditional Chinese Chess (Xiangqi) with elements of hidden information and uncertainty. The game supports two players, Red and Black, who compete to capture the opponent's pieces and win the game.
+This is a version of the Chinese Dark Chess strategy board game developed in Rust. It is a variant of traditional Chinese Chess (Xiangqi) with elements of hidden information and uncertainty. The game supports two players, Red and Black, who compete to capture the opponent's pieces and win the game.
 
 ## Features
 - Console-based gameplay.
@@ -19,11 +19,11 @@ Chinese Dark Chess is a strategy board game developed in Rust. It is a variant o
 ### Installation
 1. Clone this repository to your local machine:
     ```sh
-    git clone repo_url
+    git clone https://github.com/rbnyng/RustDarkChess
     ```
 2. Navigate to the project directory:
     ```sh
-    cd RustChess
+    cd RustDarkChess
     ```
 
 ### Running the Game
@@ -53,6 +53,9 @@ Alternatively there is a precompiled executable available.
 - `move <from_row> <from_col> <to_row> <to_col>`: Moves a piece from the starting coordinates to the destination coordinates.
 - `exit`: Exits the game.
 - `help`: Displays a help message with game instructions and commands.
+- `undo`: Undo the last move.
+- `state`: Prints the current game state in a simple text format.
+- `history`: Prints the move history.
 - `flip all`: (For Testing) Flips all hidden pieces on the board.
 
 ### Piece Capture Order and Special Rules
