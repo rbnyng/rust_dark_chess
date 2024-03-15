@@ -23,19 +23,19 @@ Chinese Dark Chess is a strategy board game developed in Rust. It is a variant o
     ```
 2. Navigate to the project directory:
     ```sh
-    cd RustChess    
+    cd RustChess
     ```
 
 ### Running the Game
 
 To compile and run the game, use the following command from the project directory:
     ```sh
-    cargo run    
+    cargo run
     ```
 
 Or you can build it into an executable with:
     ```sh
-    cargo build --release    
+    cargo build --release
     ```
 
 Alternatively there is a precompiled executable available.
