@@ -548,26 +548,26 @@ fn piece_symbols() -> HashMap<(Player, PieceType), &'static str> {
     symbols
 }
 
-fn piece_symbols_unicodechess() -> HashMap<(Player, PieceType), &'static str> {
+fn piece_symbols_eng() -> HashMap<(Player, PieceType), &'static str> {
     use PieceType::*;
     use Player::*;
 
     let mut symbols = HashMap::new();
 
-    symbols.insert((Red, General), "♔");
-    symbols.insert((Black, General), "♚");
+    symbols.insert((Red, General), "RG");
+    symbols.insert((Black, General), "BG");
     symbols.insert((Red, Advisor), "RA");
     symbols.insert((Black, Advisor), "BA");
-    symbols.insert((Red, Elephant), "♗");
-    symbols.insert((Black, Elephant), "♝");
-    symbols.insert((Red, Chariot), "♖");
-    symbols.insert((Black, Chariot), "♜");
-    symbols.insert((Red, Horse), "♘");
-    symbols.insert((Black, Horse), "♞");
+    symbols.insert((Red, Elephant), "RE");
+    symbols.insert((Black, Elephant), "BE");
+    symbols.insert((Red, Chariot), "RC");
+    symbols.insert((Black, Chariot), "BC");
+    symbols.insert((Red, Horse), "RH");
+    symbols.insert((Black, Horse), "BH");
     symbols.insert((Red, Cannon), "RC");
     symbols.insert((Black, Cannon), "BC");
-    symbols.insert((Red, Soldier), "♙");
-    symbols.insert((Black, Soldier), "♟︎");
+    symbols.insert((Red, Soldier), "RS");
+    symbols.insert((Black, Soldier), "BS");
 
     symbols
 }
