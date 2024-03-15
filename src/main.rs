@@ -36,6 +36,19 @@ enum Cell {
     Empty,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ActionType {
+    Flip { x: usize, y: usize },
+    Move { from_x: usize, from_y: usize, to_x: usize, to_y: usize },
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GameMove {
+    action_type: ActionType,
+    piece: Option<Piece>, // Piece that was moved or flipped
+    captured_piece: Option<Piece>, // Piece that was captured, if any
+}
+
 type Board = Vec<Vec<Cell>>;
 
 fn init_board() -> Board {
@@ -66,7 +79,7 @@ fn init_board() -> Board {
         .collect::<Vec<_>>()
 }
 
-fn flip_piece(board: &mut Board, x: usize, y: usize) -> Result<(), &'static str> {
+fn flip_piece(board: &mut Board, x: usize, y: usize) -> Result<Option<GameMove>, &'static str> {
     if y >= board.len() || x >= board[0].len() {
         return Err("Coordinates out of bounds.");
     }
@@ -75,13 +88,17 @@ fn flip_piece(board: &mut Board, x: usize, y: usize) -> Result<(), &'static str>
         Cell::Hidden(piece_option) => {
             if let Some(piece) = piece_option {
                 board[y][x] = Cell::Revealed(piece);
-                Ok(())
+                let game_move = GameMove {
+                    action_type: ActionType::Flip { x, y },
+                    piece: Some(piece),
+                    captured_piece: None, // No piece is captured during a flip
+                };
+                Ok(Some(game_move))
             } else {
                 Err("No piece to flip here.")
             }
         },
-        Cell::Revealed(_) => Err("Piece is already revealed."),
-        Cell::Empty => Err("No piece to flip; the cell is empty."),
+        _ => Err("Invalid flip action."),
     }
 }
 
@@ -126,20 +143,23 @@ fn is_valid_cannon_capture(board: &Board, from_x: usize, from_y: usize, to_x: us
 
     let mut obstacles = 0;
     if from_x == to_x { // Vertical movement
-        for y in std::cmp::min(from_y, to_y) + 1..std::cmp::max(from_y, to_y) {
-            if matches!(board[y][from_x], Cell::Revealed(_)) {
-                obstacles += 1;
+        for y in (std::cmp::min(from_y, to_y) + 1)..std::cmp::max(from_y, to_y) {
+            match board[y][from_x] {
+                Cell::Revealed(_) | Cell::Hidden(Some(_)) => obstacles += 1,
+                _ => (),
             }
         }
     } else { // Horizontal movement
-        for x in std::cmp::min(from_x, to_x) + 1..std::cmp::max(from_x, to_x) {
-            if matches!(board[from_y][x], Cell::Revealed(_)) {
-                obstacles += 1;
+        for x in (std::cmp::min(from_x, to_x) + 1)..std::cmp::max(from_x, to_x) {
+            match board[from_y][x] {
+                Cell::Revealed(_) | Cell::Hidden(Some(_)) => obstacles += 1,
+                _ => (),
             }
         }
     }
 
-    obstacles == 1 // Valid if exactly one piece is jumped over
+    // Valid if exactly one piece (obstacle) is jumped over, and the target cell contains a revealed piece
+    obstacles == 1 && matches!(board[to_y][to_x], Cell::Revealed(_))
 }
 
 fn is_valid_cannon_move(board: &Board, from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> bool {
@@ -167,15 +187,13 @@ fn is_valid_chariot_move_or_capture(board: &Board, from_x: usize, from_y: usize,
 
     let path_clear = if from_x == to_x {
         // Check vertical path
-        let mut range = if from_y < to_y { from_y + 1..to_y } else { to_y + 1..from_y };
-        range.all(|y| matches!(board[y][from_x], Cell::Hidden(_)) || matches!(board[y][from_x], Cell::Revealed(_)))
+        (std::cmp::min(from_y, to_y) + 1..std::cmp::max(from_y, to_y)).all(|y| matches!(board[y][from_x], Cell::Empty))
     } else {
         // Check horizontal path
-        let mut range = if from_x < to_x { from_x + 1..to_x } else { to_x + 1..from_x };
-        range.all(|x| matches!(board[from_y][x], Cell::Hidden(_)) || matches!(board[from_y][x], Cell::Revealed(_)))
+        (std::cmp::min(from_x, to_x) + 1..std::cmp::max(from_x, to_x)).all(|x| matches!(board[from_y][x], Cell::Empty))
     };
 
-    path_clear // Ensure the destination is reachable
+    path_clear && matches!(board[to_y][to_x], Cell::Revealed(_) | Cell::Empty) // Ensure path is clear and target is either empty or a revealed piece for capturing
 }
 
 fn valid_move_for_piece(piece: Piece, from_x: usize, from_y: usize, to_x: usize, to_y: usize, board: &Board) -> bool {
@@ -187,31 +205,70 @@ fn valid_move_for_piece(piece: Piece, from_x: usize, from_y: usize, to_x: usize,
     }
 }
 
-fn move_piece(board: &mut Board, from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> Result<(), &'static str> {
+fn move_piece(board: &mut Board, from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> Result<Option<GameMove>, &'static str> {
     if from_y >= board.len() || from_x >= board[0].len() || to_y >= board.len() || to_x >= board[0].len() {
         return Err("Coordinates out of bounds.");
     }
-    
-    match (board[from_y][from_x], board[to_y][to_x]) {
-        (Cell::Revealed(_attacker), Cell::Hidden(_)) => Err("Cannot move to a hidden piece directly."),
-        (Cell::Revealed(attacker), Cell::Revealed(defender)) if attacker.player != defender.player => {
-            if !valid_move_for_piece(attacker, from_x, from_y, to_x, to_y, board) {
-                return Err("Invalid move for this piece.");
-            }
-            if can_capture(attacker, defender) {
-                board[to_y][to_x] = Cell::Revealed(attacker);
-                board[from_y][from_x] = Cell::Empty; // Set to empty after moving
-                Ok(())
-            } else {
-                Err("Cannot capture this piece.")
+
+    match board[from_y][from_x] {
+        Cell::Revealed(attacker) => {
+            match board[to_y][to_x] {
+                // For moves to cells with a hidden piece or an empty cell, we use the valid_move_for_piece logic
+                Cell::Hidden(_) | Cell::Empty if valid_move_for_piece(attacker, from_x, from_y, to_x, to_y, board) => {
+                    let game_move = GameMove {
+                        action_type: ActionType::Move { from_x, from_y, to_x, to_y },
+                        piece: Some(attacker),
+                        captured_piece: None,
+                    };
+                    board[to_y][to_x] = Cell::Revealed(attacker);
+                    board[from_y][from_x] = Cell::Empty;
+                    Ok(Some(game_move))
+                },
+                // For moves to cells with a revealed piece, we additionally check if capture is possible
+                Cell::Revealed(defender) => {
+                    if valid_move_for_piece(attacker, from_x, from_y, to_x, to_y, board) && can_capture(attacker, defender) {
+                        let game_move = GameMove {
+                            action_type: ActionType::Move { from_x, from_y, to_x, to_y },
+                            piece: Some(attacker),
+                            captured_piece: Some(defender),
+                        };
+                        board[to_y][to_x] = Cell::Revealed(attacker);
+                        board[from_y][from_x] = Cell::Empty;
+                        Ok(Some(game_move))
+                    } else {
+                        Err("Cannot capture this piece.")
+                    }
+                },
+                _ => Err("Invalid move."),
             }
         },
-        (Cell::Revealed(attacker), _) if valid_move_for_piece(attacker, from_x, from_y, to_x, to_y, board) => {
-            board[to_y][to_x] = Cell::Revealed(attacker);
-            board[from_y][from_x] = Cell::Empty; // Set to empty after moving
-            Ok(())
-        },
-        _ => Err("Invalid move."),
+        _ => Err("No piece to move."),
+    }
+}
+
+fn undo_last_move(board: &mut Board, moves_history: &mut Vec<GameMove>) -> Result<(), &'static str> {
+    if let Some(last_move) = moves_history.pop() {
+        match last_move.action_type {
+            ActionType::Flip { x, y } => {
+                // If the last action was a flip, simply hide the piece again.
+                board[y][x] = Cell::Hidden(last_move.piece);
+            },
+            ActionType::Move { from_x, from_y, to_x, to_y } => {
+                // If the last action was a move, move the piece back to its original position.
+                let piece = last_move.piece.expect("A moved piece must exist.");
+                board[from_y][from_x] = Cell::Revealed(piece);
+
+                // If a piece was captured during the move, restore it to its position.
+                // Otherwise, set the cell to empty.
+                match last_move.captured_piece {
+                    Some(captured_piece) => board[to_y][to_x] = Cell::Revealed(captured_piece),
+                    None => board[to_y][to_x] = Cell::Empty,
+                }
+            }
+        }
+        Ok(())
+    } else {
+        Err("No moves to undo.")
     }
 }
 
@@ -271,6 +328,7 @@ fn print_help() {
     println!("Available commands:");
     println!("  flip <row> <col>        - Flips a hidden piece at the specified coordinates.");
     println!("  move <from_row> <from_col> <to_row> <to_col> - Moves a piece from the starting coordinates to the destination coordinates.");
+    println!("  undo                    - Undo the last move.");
     println!("  exit                    - Exits the game.");
     println!("  flip all                - (For Testing) Flips all hidden pieces on the board.");
 
@@ -303,6 +361,9 @@ fn main() {
     // Game loop flag
     let mut game_over = false;
 
+    // Tracks moves for undo functionality
+    let mut moves_history: Vec<GameMove> = Vec::new();
+
     // Main game loop
     while !game_over {
         let mut turn_completed = false;
@@ -312,7 +373,7 @@ fn main() {
             print_board(&board);
             
             // Prompt for player action
-            println!("Player {:?}, enter your action (e.g., 'flip row col', 'move from_row from_col to_row to_col', or 'exit'):", current_player);
+            println!("Player {:?}, enter your action (e.g., 'flip row col', 'move from_row from_col to_row to_col', 'undo', or 'exit'):", current_player);
 
             let mut action_input = String::new();
             io::stdin().read_line(&mut action_input).expect("Failed to read line");
@@ -331,23 +392,42 @@ fn main() {
                     println!("All pieces flipped for testing.");
                     turn_completed = true;
                 },
+                "undo" => {
+                    if let Err(e) = undo_last_move(&mut board, &mut moves_history) {
+                        println!("{}", e);
+                    } else {
+                        println!("Last move undone.");
+                        // Switch back the player if undo was successful
+                        current_player = match current_player {
+                            Player::Red => Player::Black,
+                            Player::Black => Player::Red,
+                        };
+                        turn_completed = false;
+                    }
+                },
                 _ => {
                     // Handle action input
                     match parse_input(trimmed_input) {
                         Ok((command, coordinates)) => {
                             if command == "flip" && coordinates.len() == 2 {
-                                let result = flip_piece(&mut board, coordinates[0], coordinates[1]);
-                                if result.is_ok() {
-                                    turn_completed = true;
-                                } else {
-                                    println!("Invalid flip. Try again.");
+                                match flip_piece(&mut board, coordinates[0], coordinates[1]) {
+                                    Ok(Some(game_move)) => {
+                                        moves_history.push(game_move); // Record the flip move
+                                        println!("Piece flipped.");
+                                        turn_completed = true;
+                                    },
+                                    Ok(None) => println!("No piece to flip here."),
+                                    Err(e) => println!("Error: {}", e),
                                 }
                             } else if command == "move" && coordinates.len() == 4 {
-                                let result = move_piece(&mut board, coordinates[0], coordinates[1], coordinates[2], coordinates[3]);
-                                if result.is_ok() {
-                                    turn_completed = true;
-                                } else {
-                                    println!("Invalid move. Try again.");
+                                match move_piece(&mut board, coordinates[0], coordinates[1], coordinates[2], coordinates[3]) {
+                                    Ok(Some(game_move)) => {
+                                        moves_history.push(game_move); // Record the move
+                                        println!("Piece moved.");
+                                        turn_completed = true;
+                                    },
+                                    Ok(None) => println!("Invalid move."),
+                                    Err(e) => println!("Error: {}", e),
                                 }
                             } else {
                                 println!("Invalid command or number of coordinates.");
