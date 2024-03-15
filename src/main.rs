@@ -79,6 +79,30 @@ fn init_board() -> Board {
         .collect::<Vec<_>>()
 }
 
+fn init_board_testing() -> Board {
+    // Create a 4x8 board initialized with Empty cells
+    let mut board = vec![vec![Cell::Empty; 8]; 4];
+
+    // Setup for testing cannon and chariot movements and captures
+    // - Cannons positioned to test jumping and capturing
+    // - Chariots positioned to test movement and capturing
+    // - Various pieces to act as targets or obstacles
+
+    // Placing cannons for Red and Black
+    board[3][1] = Cell::Revealed(Piece { piece_type: PieceType::Cannon, player: Player::Red }); // Bottom row, 2nd col
+    board[0][1] = Cell::Revealed(Piece { piece_type: PieceType::Cannon, player: Player::Black }); // Top row, 2nd col
+
+    // Placing chariots for Red and Black
+    board[3][0] = Cell::Revealed(Piece { piece_type: PieceType::Chariot, player: Player::Red }); // Bottom row, 1st col
+    board[0][0] = Cell::Revealed(Piece { piece_type: PieceType::Chariot, player: Player::Black }); // Top row, 1st col
+
+    // Placing obstacles for cannons to jump over and targets for chariots
+    board[2][1] = Cell::Revealed(Piece { piece_type: PieceType::Soldier, player: Player::Black }); // Cannon jump target
+    board[1][0] = Cell::Revealed(Piece { piece_type: PieceType::Soldier, player: Player::Red }); // Chariot capture target
+
+    board
+}
+
 fn flip_piece(board: &mut Board, x: usize, y: usize) -> Result<Option<GameMove>, &'static str> {
     if y >= board.len() || x >= board[0].len() {
         return Err("Coordinates out of bounds.");
@@ -136,48 +160,30 @@ fn can_capture(attacker: Piece, defender: Piece) -> bool {
 }
 
 fn is_valid_cannon_capture(board: &Board, from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> bool {
-    // Cannons must move in a straight line
-    if from_x != to_x && from_y != to_y {
+    // Ensure movement is in a straight line and the target is a revealed piece
+    if from_x != to_x && from_y != to_y || matches!(board[to_y][to_x], Cell::Empty | Cell::Hidden(_)) {
         return false;
     }
 
-    let mut obstacles = 0;
+    let mut obstacles_encountered = 0;
+
+    // Count obstacles in the path
     if from_x == to_x { // Vertical movement
         for y in (std::cmp::min(from_y, to_y) + 1)..std::cmp::max(from_y, to_y) {
-            match board[y][from_x] {
-                Cell::Revealed(_) | Cell::Hidden(Some(_)) => obstacles += 1,
-                _ => (),
+            if !matches!(board[y][from_x], Cell::Empty) {
+                obstacles_encountered += 1;
             }
         }
     } else { // Horizontal movement
         for x in (std::cmp::min(from_x, to_x) + 1)..std::cmp::max(from_x, to_x) {
-            match board[from_y][x] {
-                Cell::Revealed(_) | Cell::Hidden(Some(_)) => obstacles += 1,
-                _ => (),
+            if !matches!(board[from_y][x], Cell::Empty) {
+                obstacles_encountered += 1;
             }
         }
     }
 
-    // Valid if exactly one piece (obstacle) is jumped over, and the target cell contains a revealed piece
-    obstacles == 1 && matches!(board[to_y][to_x], Cell::Revealed(_))
-}
-
-fn is_valid_cannon_move(board: &Board, from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> bool {
-    if from_x != to_x && from_y != to_y {
-        return false; // Cannons must move straight
-    }
-
-    let path_clear = if from_x == to_x {
-        // Check vertical path
-        let mut range = if from_y < to_y { from_y+1..to_y } else { to_y+1..from_y };
-        range.all(|y| matches!(board[y][from_x], Cell::Hidden(_)))
-    } else {
-        // Check horizontal path
-        let mut range = if from_x < to_x { from_x+1..to_x } else { to_x+1..from_x };
-        range.all(|x| matches!(board[from_y][x], Cell::Hidden(_)))
-    };
-
-    path_clear && !matches!(board[to_y][to_x], Cell::Revealed(_)) // Ensure the destination is not blocked
+    // Valid if exactly one obstacle is jumped over, regardless of its allegiance
+    obstacles_encountered == 1 && matches!(board[to_y][to_x], Cell::Revealed(_))
 }
 
 fn is_valid_chariot_move_or_capture(board: &Board, from_x: usize, from_y: usize, to_x: usize, to_y: usize) -> bool {
@@ -198,9 +204,9 @@ fn is_valid_chariot_move_or_capture(board: &Board, from_x: usize, from_y: usize,
 
 fn valid_move_for_piece(piece: Piece, from_x: usize, from_y: usize, to_x: usize, to_y: usize, board: &Board) -> bool {
     match piece.piece_type {
-        PieceType::Cannon if matches!(board[to_y][to_x], Cell::Hidden(_)) => is_valid_cannon_move(board, from_x, from_y, to_x, to_y),
-        PieceType::Cannon => is_valid_cannon_capture(board, from_x, from_y, to_x, to_y),
-        PieceType::Chariot => is_valid_chariot_move_or_capture(board, from_x, from_y, to_x, to_y),
+        // Use the same logic for cannons and chariots for non-capturing moves.
+        PieceType::Cannon | PieceType::Chariot => is_valid_chariot_move_or_capture(board, from_x, from_y, to_x, to_y),
+        // Direct adjacent move for all other pieces.
         _ => (from_x as i32 - to_x as i32).abs() + (from_y as i32 - to_y as i32).abs() == 1,
     }
 }
@@ -213,20 +219,29 @@ fn move_piece(board: &mut Board, from_x: usize, from_y: usize, to_x: usize, to_y
     match board[from_y][from_x] {
         Cell::Revealed(attacker) => {
             match board[to_y][to_x] {
-                // For moves to cells with a hidden piece or an empty cell, we use the valid_move_for_piece logic
-                Cell::Hidden(_) | Cell::Empty if valid_move_for_piece(attacker, from_x, from_y, to_x, to_y, board) => {
-                    let game_move = GameMove {
-                        action_type: ActionType::Move { from_x, from_y, to_x, to_y },
-                        piece: Some(attacker),
-                        captured_piece: None,
-                    };
-                    board[to_y][to_x] = Cell::Revealed(attacker);
-                    board[from_y][from_x] = Cell::Empty;
-                    Ok(Some(game_move))
+                Cell::Hidden(_) | Cell::Empty => {
+                    // Handle non-capturing moves
+                    if valid_move_for_piece(attacker, from_x, from_y, to_x, to_y, board) {
+                        let game_move = GameMove {
+                            action_type: ActionType::Move { from_x, from_y, to_x, to_y },
+                            piece: Some(attacker),
+                            captured_piece: None,
+                        };
+                        board[to_y][to_x] = Cell::Revealed(attacker);
+                        board[from_y][from_x] = Cell::Empty;
+                        Ok(Some(game_move))
+                    } else {
+                        Err("Invalid move.")
+                    }
                 },
-                // For moves to cells with a revealed piece, we additionally check if capture is possible
                 Cell::Revealed(defender) => {
-                    if valid_move_for_piece(attacker, from_x, from_y, to_x, to_y, board) && can_capture(attacker, defender) {
+                    // Handle capturing moves
+                    if attacker.player == defender.player {
+                        return Err("Cannot capture your own piece.");
+                    }
+
+                    if (attacker.piece_type != PieceType::Cannon && can_capture(attacker, defender)) ||
+                       (attacker.piece_type == PieceType::Cannon && is_valid_cannon_capture(board, from_x, from_y, to_x, to_y)) {
                         let game_move = GameMove {
                             action_type: ActionType::Move { from_x, from_y, to_x, to_y },
                             piece: Some(attacker),
@@ -239,7 +254,7 @@ fn move_piece(board: &mut Board, from_x: usize, from_y: usize, to_x: usize, to_y
                         Err("Cannot capture this piece.")
                     }
                 },
-                _ => Err("Invalid move."),
+                _ => Err("Invalid target."),
             }
         },
         _ => Err("No piece to move."),
@@ -324,11 +339,57 @@ fn flip_all_pieces(board: &mut Board) {
     }
 }
 
+fn print_move_history(moves_history: &[GameMove], symbols: &HashMap<(Player, PieceType), &'static str>) {
+    println!("Move History:");
+    for (index, game_move) in moves_history.iter().enumerate() {
+        let player = match game_move.piece {
+            Some(piece) => piece.player,
+            None => continue,
+        };
+        
+        let player_symbol = match player {
+            Player::Red => "Red",
+            Player::Black => "Black",
+        };
+
+        let piece_symbol = game_move.piece.map_or("Unknown", |p| symbols.get(&(p.player, p.piece_type)).unwrap_or(&"Unknown"));
+        
+        let action_description = match game_move.action_type {
+            ActionType::Flip { x, y } => format!("Flip at ({}, {})", x, y),
+            ActionType::Move { from_x, from_y, to_x, to_y } => format!("Move from ({}, {}) to ({}, {})", from_x, from_y, to_x, to_y),
+        };
+        
+        let capture_description = match game_move.captured_piece {
+            Some(captured_piece) => format!(", captured {}", symbols.get(&(captured_piece.player, captured_piece.piece_type)).unwrap_or(&"Unknown")),
+            None => String::new(),
+        };
+
+        println!("{}. {} {} made a {}{}", index + 1, player_symbol, piece_symbol, action_description, capture_description);
+    }
+}
+
+fn print_game_state(board: &Board) {
+    let symbols = piece_symbols(); // Retrieve the symbols mapping
+    println!("Game State:");
+    for row in board {
+        let row_state: Vec<String> = row.iter().map(|cell| match cell {
+            Cell::Hidden(_) => String::from("?"),
+            Cell::Revealed(piece) => symbols.get(&(piece.player, piece.piece_type)).unwrap_or(&" ").to_string(),
+            Cell::Empty => String::from("."),
+        }).collect();
+
+        // Join the cell states with a comma for readability
+        println!("{}", row_state.join(", "));
+    }
+}
+
 fn print_help() {
     println!("Available commands:");
     println!("  flip <row> <col>        - Flips a hidden piece at the specified coordinates.");
     println!("  move <from_row> <from_col> <to_row> <to_col> - Moves a piece from the starting coordinates to the destination coordinates.");
     println!("  undo                    - Undo the last move.");
+    println!("  state                   - Prints the current game state in a simple text format.");
+    println!("  history                 - Prints the move history.");
     println!("  exit                    - Exits the game.");
     println!("  flip all                - (For Testing) Flips all hidden pieces on the board.");
 
@@ -364,6 +425,8 @@ fn main() {
     // Tracks moves for undo functionality
     let mut moves_history: Vec<GameMove> = Vec::new();
 
+    let symbols = piece_symbols();
+    
     // Main game loop
     while !game_over {
         let mut turn_completed = false;
@@ -381,6 +444,8 @@ fn main() {
 
             // Check for the exit command
             match trimmed_input.to_lowercase().as_str() {
+                "state" => print_game_state(&board),
+                "history" => print_move_history(&moves_history, &symbols),
                 "help" => print_help(),
                 "exit" => {
                     println!("Exiting game.");
