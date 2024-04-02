@@ -19,11 +19,11 @@ This is a version of the Chinese Dark Chess strategy board game developed in Rus
 ### Installation
 1. Clone this repository to your local machine:
     ```sh
-    git clone https://github.com/rbnyng/RustDarkChess
+    git clone https://github.com/rbnyng/rust_dark_chess
     ```
 2. Navigate to the project directory:
     ```sh
-    cd RustDarkChess
+    cd rust_dark_chess
     ```
 
 ### Running the Game
