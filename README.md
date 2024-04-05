@@ -3,6 +3,8 @@
 ## Overview
 This is a version of the Chinese Dark Chess strategy board game developed in Rust. It is a variant of traditional Chinese Chess (Xiangqi) with elements of hidden information and uncertainty. The game supports two players, Red and Black, who compete to capture the opponent's pieces and win the game.
 
+<img src="img/screenshot.png?raw=true" alt="Title" style="width: 30%; height: auto;"/>
+
 ## Features
 - Console-based gameplay.
 - Hidden piece positions until revealed by players.
